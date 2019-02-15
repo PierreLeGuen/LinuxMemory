@@ -35,7 +35,8 @@ typedef struct LinuxProc_s{
 
 int attach(LinuxProc_t target);
 int detach(LinuxProc_t target);
-int Read(LinuxProc_t Process, int32_t nsize, void* address, void* buffer);
+int read_int(LinuxProc_t Process, int32_t nsize, void* address, void* buffer);
+int read_string(LinuxProc_t Process, int32_t nsize, void* address, char *buffer);
 int Write(int32_t nsize, void* address, void* buffer);
 pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, int intExactMatch);
 int IsNumeric(const char* ccharptr_CharacterList);

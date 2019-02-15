@@ -40,7 +40,6 @@ pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, in
     else
         CompareFunction = &strstr_ws;
 
-
     dir_proc = opendir(PROC_DIRECTORY) ;
     if (dir_proc == NULL)
     {
@@ -66,13 +65,13 @@ pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, in
                     fclose(fd_CmdLineFile);  // close the file prior to exiting the routine
 
                     if (strrchr(chrarry_NameOfProcess, '/'))
-                        chrptr_StringToCompare = strrchr(chrarry_NameOfProcess, '/') +1 ;
+                        chrptr_StringToCompare = strrchr(chrarry_NameOfProcess, '/') +1 ; //Compare after ./
                     else
                         chrptr_StringToCompare = chrarry_NameOfProcess ;
 
                     if ( CompareFunction(chrptr_StringToCompare, cchrptr_ProcessName, intCaseSensitiveness) )
                     {
-                        ipid = atoi(de_DirEntity->d_name);
+                        ipid = (int)strtol(de_DirEntity->d_name, (char **)NULL, 10); //atoi deprecated, use strtol
                         closedir(dir_proc) ;
                         return ipid;
                     }
@@ -80,17 +79,16 @@ pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, in
             }
         }
     }
-    closedir(dir_proc) ;
+    closedir(dir_proc);
     return ipid ;
 }
 
 int attach(LinuxProc_t target)
 {
     int status;
-
     /* attach, to the target application, which should cause a SIGSTOP */
-    if (ptrace(PTRACE_ATTACH, target, NULL, NULL) == -1L) {
-        fprintf(stderr, "error: failed to attach to %d, %s, Try running as root\n", target,
+    if (ptrace(PTRACE_ATTACH, target.ProcId, NULL, NULL) == -1L) {
+        fprintf(stderr, "error: failed to attach to %d, %s, Try running as root\n", target.ProcId,
                 strerror(errno));
         return 0;
     }
@@ -113,13 +111,31 @@ int detach(LinuxProc_t target)
     return ptrace(PTRACE_DETACH, target, NULL, 0) == 0;
 }
 
-int Read(LinuxProc_t Process, int32_t nsize, void* address, void* buffer)
+int read_int(LinuxProc_t Process, int32_t nsize, void* address, void* buffer)
 {
-    long  _DEBUGINT  = 0;
+    long _DEBUGINT  = 0;
 
     _DEBUGINT = ptrace(PTRACE_PEEKDATA,Process.ProcId,address,0);
-    printf("Output from ptrace : %i", _DEBUGINT); // currently just reads one word, but later i will add more data types.
+    printf("Output from ptrace (0x%lx): %i\n", (long) address,(int) _DEBUGINT); // currently just reads one word, but later i will add more data types.
 
+    return 1;
+}
+
+int read_string(LinuxProc_t Process, int32_t nsize, void *address, char *buffer) {
+    char ptrace_result;
+    char tiny_buffer[64];
+    int i=0, z=0;
+    do{
+        ptrace_result=(char) ptrace(PTRACE_PEEKTEXT, Process.ProcId, address + (z), 0);
+        strcat(tiny_buffer,&ptrace_result);
+        ++z;
+    }while (ptrace_result);
+
+    do{
+        printf("%c", tiny_buffer[i]);
+        i++;
+    }while(i!=z);
+    printf("\n");
     return 1;
 }
 
