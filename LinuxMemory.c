@@ -24,14 +24,66 @@ int strstr_ws(const char* haystack, const char* needle, int intCaseSensitive)
         return (int) strcasestr(haystack, needle);
 }
 
+#define BUF_SIZE 1024
+
+pid_t getPidByNameTEST(char *task_name) {
+    DIR *dir;
+    struct dirent *ptr;
+    FILE *fp;
+    char filepath[50];//大小随意，能装下cmdline文件的路径即可
+    char cur_task_name[50];//大小随意，能装下要识别的命令行文本即可
+    char buf[BUF_SIZE];
+    int ipid = -1;
+    dir = opendir(PROC_DIRECTORY); //打开路径
+    if (dir == NULL)
+    {
+        perror("Couldn't open the " PROC_DIRECTORY " directory") ;
+        return -2;
+    }
+    if (NULL != dir)
+    {
+        while ((ptr = readdir(dir)) != NULL) //循环读取路径下的每一个文件/文件夹
+        {
+            //如果读取到的是"."或者".."则跳过，读取到的不是文件夹名字也跳过
+            if ((strcmp(ptr->d_name, ".") == 0) || (strcmp(ptr->d_name, "..") == 0))
+                continue;
+            if (DT_DIR != ptr->d_type)
+                continue;
+
+            sprintf(filepath, "/proc/%s/status", ptr->d_name);//生成要读取的文件的路径
+            fp = fopen(filepath, "r");//打开文件
+            if (NULL != fp)
+            {
+                if( fgets(buf, BUF_SIZE-1, fp)== NULL ){
+                    fclose(fp);
+                    continue;
+                }
+                sscanf(buf, "%*s %s", cur_task_name);
+
+                //如果文件内容满足要求则打印路径的名字（即进程的PID）
+                if (!strcmp(task_name, cur_task_name)){
+                    ipid = (int)strtol(ptr->d_name, (char **)NULL, 10);
+                    fclose(fp);
+                    closedir(dir);//关闭路径
+                    return ipid;
+                }
+                fclose(fp);
+            }
+
+        }
+        closedir(dir);//关闭路径
+        return ipid;
+    }
+}
+
 pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, int intExactMatch)
 {
     int ipid = -1;
     char chrarry_CommandLinePath[800]  ;
-    char chrarry_NameOfProcess[500]  ;
-    char* chrptr_StringToCompare = NULL ;
     struct dirent* de_DirEntity = NULL ;
     DIR* dir_proc = NULL ;
+    char chrarry_NameOfProcess[500] = {0}; // ICIIIII
+    char* chrptr_StringToCompare = NULL ; // ICIIIII
 
     int (*CompareFunction) (const char*, const char*, int) ;
 
@@ -44,7 +96,7 @@ pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, in
     if (dir_proc == NULL)
     {
         perror("Couldn't open the " PROC_DIRECTORY " directory") ;
-        return  -2 ;
+        return -2;
     }
 
     // Loop while not NULL
@@ -58,7 +110,8 @@ pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, in
                 strcpy(chrarry_CommandLinePath, PROC_DIRECTORY) ;
                 strcat(chrarry_CommandLinePath, de_DirEntity->d_name) ;
                 strcat(chrarry_CommandLinePath, "/cmdline") ;
-                FILE* fd_CmdLineFile = fopen (chrarry_CommandLinePath, "rt") ;  // open the file for reading text
+                FILE* fd_CmdLineFile = fopen (chrarry_CommandLinePath, "rt") ;  // open the file for reading text*
+
                 if (fd_CmdLineFile)
                 {
                     fscanf(fd_CmdLineFile, "%s", chrarry_NameOfProcess) ; // read from /proc/<NR>/cmdline
@@ -71,7 +124,9 @@ pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, in
 
                     if ( CompareFunction(chrptr_StringToCompare, cchrptr_ProcessName, intCaseSensitiveness) )
                     {
-                        ipid = (int)strtol(de_DirEntity->d_name, (char **)NULL, 10); //atoi deprecated, use strtol
+                        ipid = atoi(de_DirEntity->d_name);
+                        // ipid = (int)strtol(de_DirEntity->d_name, (char **)NULL, 10); //atoi deprecated, use strtol
+                        printf("PID in func : %i",ipid);
                         closedir(dir_proc) ;
                         return ipid;
                     }
@@ -121,7 +176,14 @@ int read_int(LinuxProc_t Process, int32_t nsize, void* address, void* buffer)
     return 1;
 }
 
-int read_string(LinuxProc_t Process, int32_t nsize, void *address, char *buffer) {
+int write_int(LinuxProc_t Process, int32_t nsize, void *address, void *value) {
+    ptrace(PTRACE_POKEDATA,Process.ProcId,address, value);
+    printf("ptrace wrote : (0x%lx)\n", (long) address); // currently just reads one word, but later i will add more data types.
+
+    return 1;
+}
+
+int read_char(LinuxProc_t Process, int32_t nsize, void *address, char *buffer) {
     char ptrace_result;
     char tiny_buffer[64];
     int i=0, z=0;
