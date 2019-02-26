@@ -12,11 +12,11 @@
 #include <unistd.h>
 #include <errno.h>
 
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <sys/uio.h>
 
 #include <fcntl.h>
 
@@ -35,12 +35,10 @@ typedef struct LinuxProc_s{
 
 int attach(LinuxProc_t target);
 int detach(LinuxProc_t target);
-int read_int(LinuxProc_t Process, int32_t nsize, void* address, void* buffer);
+int Read(LinuxProc_t Process, void *address, void *buf, size_t size);
 int write_int(LinuxProc_t Process, int32_t nsize, void* address, void* value);
-int read_char(LinuxProc_t Process, int32_t nsize, void *address, char *buffer);
 int Write(int32_t nsize, void* address, void* buffer);
-pid_t getPidByNameTEST(char* task_name);
-pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, int intExactMatch);
+pid_t getPidByName(char *task_name);
 int IsNumeric(const char* ccharptr_CharacterList);
 LinuxProc_t LinuxProcFromID(pid_t pid);
 
