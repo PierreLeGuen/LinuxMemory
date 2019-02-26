@@ -24,73 +24,68 @@ int strstr_ws(const char* haystack, const char* needle, int intCaseSensitive)
         return (int) strcasestr(haystack, needle);
 }
 
-pid_t GetPIDbyName(const char* cchrptr_ProcessName, int intCaseSensitiveness, int intExactMatch)
-{
+#define BUF_SIZE 64
+
+pid_t getPidByName(char *task_name) {
+    DIR *dir;
+    struct dirent *ptr;
+    FILE *fp;
+    char filepath[64];
+    char cur_task_name[64];//大小随意，能装下要识别的命令行文本即可
+    char buf[BUF_SIZE];
     int ipid = -1;
-    char chrarry_CommandLinePath[800]  ;
-    char chrarry_NameOfProcess[500]  ;
-    char* chrptr_StringToCompare = NULL ;
-    struct dirent* de_DirEntity = NULL ;
-    DIR* dir_proc = NULL ;
-
-    int (*CompareFunction) (const char*, const char*, int) ;
-
-    if (intExactMatch)
-        CompareFunction = &strcmp_ws;
-    else
-        CompareFunction = &strstr_ws;
-
-
-    dir_proc = opendir(PROC_DIRECTORY) ;
-    if (dir_proc == NULL)
+    dir = opendir(PROC_DIRECTORY); //打开路径
+    if (dir == NULL)
     {
         perror("Couldn't open the " PROC_DIRECTORY " directory") ;
-        return  -2 ;
+        return -2;
     }
-
-    // Loop while not NULL
-    while ((de_DirEntity = readdir(dir_proc)) )
+    if (NULL != dir)
     {
-        // Skip non numeric entries
-        if (de_DirEntity->d_type == DT_DIR)
+        while ((ptr = readdir(dir)) != NULL) //循环读取路径下的每一个文件/文件夹
         {
-            if (IsNumeric(de_DirEntity->d_name))
-            {
-                strcpy(chrarry_CommandLinePath, PROC_DIRECTORY) ;
-                strcat(chrarry_CommandLinePath, de_DirEntity->d_name) ;
-                strcat(chrarry_CommandLinePath, "/cmdline") ;
-                FILE* fd_CmdLineFile = fopen (chrarry_CommandLinePath, "rt") ;  // open the file for reading text
-                if (fd_CmdLineFile)
-                {
-                    fscanf(fd_CmdLineFile, "%s", chrarry_NameOfProcess) ; // read from /proc/<NR>/cmdline
-                    fclose(fd_CmdLineFile);  // close the file prior to exiting the routine
+            // Skip non numeric entries
+            if (ptr->d_type == DT_DIR) {
+                if (IsNumeric(ptr->d_name)) {
+                    //如果读取到的是"."或者".."则跳过，读取到的不是文件夹名字也跳过
+                    if ((strcmp(ptr->d_name, ".") == 0) || (strcmp(ptr->d_name, "..") == 0))
+                        continue;
+                    if (DT_DIR != ptr->d_type)
+                        continue;
 
-                    if (strrchr(chrarry_NameOfProcess, '/'))
-                        chrptr_StringToCompare = strrchr(chrarry_NameOfProcess, '/') +1 ;
-                    else
-                        chrptr_StringToCompare = chrarry_NameOfProcess ;
+                    sprintf(filepath, "/proc/%s/status", ptr->d_name);//生成要读取的文件的路径
+                    fp = fopen(filepath, "r");//打开文件
+                    if (NULL != fp) {
+                        if (fgets(buf, BUF_SIZE - 1, fp) == NULL) {
+                            fclose(fp);
+                            continue;
+                        }
+                        sscanf(buf, "%*s %s", cur_task_name);
 
-                    if ( CompareFunction(chrptr_StringToCompare, cchrptr_ProcessName, intCaseSensitiveness) )
-                    {
-                        ipid = atoi(de_DirEntity->d_name);
-                        closedir(dir_proc) ;
-                        return ipid;
+                        //如果文件内容满足要求则打印路径的名字（即进程的PID）
+                        if (!strcmp(task_name, cur_task_name)) {
+                            ipid = (int) strtol(ptr->d_name, (char **) NULL, 10);
+                            fclose(fp);
+                            closedir(dir);//关闭路径
+                            return ipid;
+                        }
+                        fclose(fp);
                     }
                 }
             }
+
         }
+        closedir(dir);//关闭路径
+        return ipid;
     }
-    closedir(dir_proc) ;
-    return ipid ;
 }
 
 int attach(LinuxProc_t target)
 {
     int status;
-
     /* attach, to the target application, which should cause a SIGSTOP */
-    if (ptrace(PTRACE_ATTACH, target, NULL, NULL) == -1L) {
-        fprintf(stderr, "error: failed to attach to %d, %s, Try running as root\n", target,
+    if (ptrace(PTRACE_ATTACH, target.ProcId, NULL, NULL) == -1L) {
+        fprintf(stderr, "error: failed to attach to %d, %s, Try running as root\n", target.ProcId,
                 strerror(errno));
         return 0;
     }
@@ -113,13 +108,86 @@ int detach(LinuxProc_t target)
     return ptrace(PTRACE_DETACH, target, NULL, 0) == 0;
 }
 
-int Read(LinuxProc_t Process, int32_t nsize, void* address, void* buffer)
-{
-    long  _DEBUGINT  = 0;
+int Read(LinuxProc_t Process, void *address, void *buf, size_t size) {
+    if (Process.ProcId == 0)
+        return 1;
+    if (size == 0)
+        return 1;
 
-    _DEBUGINT = ptrace(PTRACE_PEEKDATA,Process.ProcId,address,0);
-    printf("Output from ptrace : %i", _DEBUGINT); // currently just reads one word, but later i will add more data types.
+    struct iovec iovLocalAddressSpace[1];
+    struct iovec iovRemoteAddressSpace[1];
+    iovLocalAddressSpace[0].iov_base = buf; //Store data in this buffer
+    iovLocalAddressSpace[0].iov_len = size; //which has this size.
 
+    iovRemoteAddressSpace[0].iov_base = address; //The data comes from here
+    iovRemoteAddressSpace[0].iov_len = size; //and has this size.
+
+    ssize_t sSize = process_vm_readv(Process.ProcId, //Remote process id
+                                     iovLocalAddressSpace,  //Local iovec array
+                                     1, //Size of the local iovec array
+                                     iovRemoteAddressSpace,  //Remote iovec array
+                                     1, //Size of the remote iovec array
+                                     0); //Flags, unused
+    if (sSize < 0) {
+        switch (errno) {
+            case EINVAL:
+                printf("ERROR: INVALID ARGUMENTS.\n");
+                break;
+            case EFAULT:
+                printf("ERROR: UNABLE TO ACCESS TARGET MEMORY ADDRESS.\n");
+                break;
+            case ENOMEM:
+                printf("ERROR: UNABLE TO ALLOCATE MEMORY.\n");
+                break;
+            case EPERM:
+                printf("ERROR: INSUFFICIENT PRIVILEGES TO TARGET PROCESS.\n");
+                break;
+            case ESRCH:
+                printf("ERROR: PROCESS DOES NOT EXIST.\n");
+                break;
+            default:
+                printf("ERROR: AN UNKNOWN ERROR HAS OCCURRED.\n");
+        }
+    }
+
+    if (sSize == (ssize_t) size)
+    {
+        //Success
+        return 0;
+    }
+    else if (sSize == 0)
+    {
+        //Failure
+        return 1;
+    }
+
+    //Partial read, data might be corrupted
+    return 1;
+}
+
+
+int write_int(LinuxProc_t Process, int32_t nsize, void *address, void *value) {
+    ptrace(PTRACE_POKEDATA,Process.ProcId,address, value);
+    printf("ptrace wrote : (0x%lx)\n", (long) address); // currently just reads one word, but later i will add more data types.
+
+    return 1;
+}
+
+int read_char(LinuxProc_t Process, int32_t nsize, void *address, char *buffer) {
+    char ptrace_result;
+    char tiny_buffer[64];
+    int i=0, z=0;
+    do{
+        ptrace_result=(char) ptrace(PTRACE_PEEKTEXT, Process.ProcId, address + (z), 0);
+        strcat(tiny_buffer,&ptrace_result);
+        ++z;
+    }while (ptrace_result);
+
+    do{
+        printf("%c", tiny_buffer[i]);
+        i++;
+    }while(i!=z);
+    printf("\n");
     return 1;
 }
 
