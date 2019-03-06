@@ -96,7 +96,8 @@ void *getModuleBaseAddress(pid_t processID, const char *processName) {
      */
     while ((getline(&currentLine, &lengthLine, mapsFile)) != -1) {
         if (strstr(currentLine, processName)) {
-            memcpy(stringToBase, &currentLine[0], 12);  //Base address is between [0] and [11] in string, and base 0x (hex)
+            memcpy(stringToBase, &currentLine[0],
+                   12);  //Base address is between [0] and [11] in string, and base 0x (hex)
             vProcBaseAddress = (void *) strtol(stringToBase, (char **) NULL, 16);   //fill the ptr
             break;
         }
@@ -108,49 +109,24 @@ void *getModuleBaseAddress(pid_t processID, const char *processName) {
     return vProcBaseAddress;
 }
 
-int attach(LinuxProc_t target) {
-    int status;
-    /* attach, to the target application, which should cause a SIGSTOP */
-    if (ptrace(PTRACE_ATTACH, target.ProcessID, NULL, NULL) == -1L) {
-        fprintf(stderr, "error: failed to attach to %d, %s, Try running as root\n", target.ProcessID,
-                strerror(errno));
-        return 0;
-    }
-
-    /* wait for the SIGSTOP to take place. */
-    if (waitpid(target.ProcessID, &status, 0) == -1 || !WIFSTOPPED(status)) {
-        fprintf(stderr,
-                "error: there was an error waiting for the target to stop.\n");
-        fprintf(stdout, "info: %s\n", strerror(errno));
-        return 0;
-    }
-
-    /* everything looks okay */
-    return 1;
-
-}
-
-int detach(LinuxProc_t target) {
-    return ptrace(PTRACE_DETACH, target, NULL, 0) == 0;
-}
-
-void Read(LinuxProc_t process, void *address, void *buf, size_t size) {
+void ReadProcessMemory(LinuxProc_t lpProcess, void *vpBaseAddress, void *vpBuffer, size_t nSize,
+                       size_t *lpNumberOfBytesRead) {
     struct iovec iovLocalAddressSpace[1];
     struct iovec iovRemoteAddressSpace[1];
-    iovLocalAddressSpace[0].iov_base = buf; //Store data in this buffer
-    iovLocalAddressSpace[0].iov_len = size; //which has this size.
+    iovLocalAddressSpace[0].iov_base = vpBuffer; //Store data in this buffer
+    iovLocalAddressSpace[0].iov_len = nSize; //which has this size.
 
-    iovRemoteAddressSpace[0].iov_base = address; //The data comes from here
-    iovRemoteAddressSpace[0].iov_len = size; //and has this size.
+    iovRemoteAddressSpace[0].iov_base = vpBuffer; //The data comes from here
+    iovRemoteAddressSpace[0].iov_len = nSize; //and has this size.
 
-    ssize_t sSize = process_vm_readv(process.ProcessID, //Remote process id
+    ssize_t sSize = process_vm_readv(lpProcess.ProcessID, //Remote process id
                                      iovLocalAddressSpace,  //Local iovec array
                                      1, //Size of the local iovec array
                                      iovRemoteAddressSpace,  //Remote iovec array
                                      1, //Size of the remote iovec array
                                      0); //Flags, unused
     if (sSize < 0) {
-        printf("READ %d -> ", process.ProcessID);
+        printf("READ %d -> ", lpProcess.ProcessID);
         switch (errno) {
             case EINVAL:
                 printf("ERROR: INVALID ARGUMEnNTS.\n");
@@ -173,23 +149,24 @@ void Read(LinuxProc_t process, void *address, void *buf, size_t size) {
     }
 }
 
-void Write(LinuxProc_t process, void *address, void *buf, size_t size) {
+void WriteProcessMemory(LinuxProc_t lpProcess, void *vpBaseAddress, void *vpBuffer, size_t nSize,
+                        size_t *lpNumberOfBytesRead) {
     struct iovec iovLocalAddressSpace[1];
     struct iovec iovRemoteAddressSpace[1];
-    iovLocalAddressSpace[0].iov_base = buf; //The data comes from here
-    iovLocalAddressSpace[0].iov_len = size; //which has this size.
+    iovLocalAddressSpace[0].iov_base = vpBuffer; //The data comes from here
+    iovLocalAddressSpace[0].iov_len = nSize; //which has this size.
 
-    iovRemoteAddressSpace[0].iov_base = address; //Store data in this buffer
-    iovRemoteAddressSpace[0].iov_len = size; //and has this size.
+    iovRemoteAddressSpace[0].iov_base = vpBaseAddress; //Store data in this buffer
+    iovRemoteAddressSpace[0].iov_len = nSize; //and has this size.
 
-    ssize_t sSize = process_vm_writev(process.ProcessID, //Remote process id
+    ssize_t sSize = process_vm_writev(lpProcess.ProcessID, //Remote process id
                                       iovLocalAddressSpace,  //Local iovec array
                                       1, //Size of the local iovec array
                                       iovRemoteAddressSpace,  //Remote iovec array
                                       1, //Size of the remote iovec array
                                       0); //Flags, unused
     if (sSize < 0) {
-        printf("WRITE %d -> ", process.ProcessID);
+        printf("WRITE %d -> ", lpProcess.ProcessID);
         switch (errno) {
             case EINVAL:
                 printf("ERROR: INVALID ARGUMENTS.\n");
@@ -218,4 +195,30 @@ LinuxProc_t fillProcessStructbyName(const char *processName) {
     processStruct.ProcessID = getPidByName(processName);
     processStruct.ProcessBaseAddress = getModuleBaseAddress(processStruct.ProcessID, processName);
     return processStruct;
+}
+
+int attach(LinuxProc_t target) {
+    int status = -1;
+    /* attach, to the target application, which should cause a SIGSTOP */
+    if (ptrace(PTRACE_ATTACH, target.ProcessID, NULL, NULL) == -1L) {
+        fprintf(stderr, "error: failed to attach to %d, %s, Try running as root\n", target.ProcessID,
+                strerror(errno));
+        return 0;
+    }
+
+    /* wait for the SIGSTOP to take place. */
+    if (waitpid(target.ProcessID, &status, 0) == -1 || !WIFSTOPPED(status)) {
+        fprintf(stderr,
+                "error: there was an error waiting for the target to stop.\n");
+        fprintf(stdout, "info: %s\n", strerror(errno));
+        return 0;
+    }
+
+    /* everything looks okay */
+    return 1;
+
+}
+
+int detach(LinuxProc_t target) {
+    return ptrace(PTRACE_DETACH, target, NULL, 0) == 0;
 }
