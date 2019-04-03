@@ -1,13 +1,24 @@
 cmake_minimum_required(VERSION 3.13)
-project(LinuxMemory C)
+project(LinuxMemory)
+
+SET(PROJ_ROOT       "${CMAKE_CURRENT_SOURCE_DIR}")
+SET(PROJ_BIN        ${PROJ_ROOT}/LinuxMemoryAPI/lib)
+SET(PROJ_LIB        ${PROJ_ROOT}/LinuxMemoryAPI/lib)
+
+# default output directories
+SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY          ${PROJ_BIN})
+SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG    ${PROJ_BIN})
+SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE  ${PROJ_BIN})
+SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY          ${PROJ_BIN})
+SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG    ${PROJ_BIN})
+SET(CAMKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE  ${PROJ_BIN})
+SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY          ${PROJ_LIB})
+SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG    ${PROJ_LIB})
+SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE  ${PROJ_LIB})
 
 set(CMAKE_C_STANDARD 11)
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/LinuxMemory/lib)
-# file(REMOVE ${CMAKE_SOURCE_DIR}/LinuxMemory/include/LinuxMemory.h)
+add_library(LinuxMemory SHARED src/LinuxMemoryAPI/LinuxMemory.c src/LinuxMemoryAPI/LinuxMemory.h)
 
-add_library(LinuxMemory SHARED LinuxMemory.c LinuxMemory.h)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/LinuxMemoryAPI/LinuxMemory.h ${CMAKE_SOURCE_DIR}/LinuxMemoryAPI/include/LinuxMemory.h COPYONLY)
 
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/LinuxMemory.h ${CMAKE_SOURCE_DIR}/LinuxMemory/include COPYONLY)
-
-# file(COPY LinuxMemory.h DESTINATION ${CMAKE_SOURCE_DIR}/LinuxMemory/include)
