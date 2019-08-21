@@ -28,22 +28,20 @@ int IsNumeric(const char *characterList) {
 
 pid_t getPidByName(const char *processName) {
     DIR *dir;
-    struct dirent *ptr;
-    FILE *fp;
-    char filepath[64];
-    char cur_task_name[64];
-    char buf[64];
-    int ipid = -1;
     dir = opendir("/proc");
     if (dir == NULL) {
         perror("Couldn't open the PROC directory");
         return -2;
     }
     if (NULL != dir) {
+        struct dirent *ptr;
+        int ipid = -1;
         while ((ptr = readdir(dir)) != NULL) {
             // Skip non numeric entries
             if (ptr->d_type == DT_DIR) {
                 if (IsNumeric(ptr->d_name)) {
+                    FILE *fp;
+                    char filepath[64];
                     //Skip "." and ".." files
                     if ((strcmp(ptr->d_name, ".") == 0) || (strcmp(ptr->d_name, "..") == 0))
                         continue;
@@ -52,6 +50,8 @@ pid_t getPidByName(const char *processName) {
                     sprintf(filepath, "/proc/%s/status", ptr->d_name);//parse status file
                     fp = fopen(filepath, "r");//open in read mode
                     if (NULL != fp) {
+                        char cur_task_name[64];
+                        char buf[64];
                         if (fgets(buf, sizeof(buf) - 1, fp) == NULL) {
                             fclose(fp);
                             continue;
