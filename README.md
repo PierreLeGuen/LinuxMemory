@@ -1,2 +1,4 @@
 # LinuxMemory
-Memory editing tool, written in C
+Memory editing lib, written in C.
+
+
